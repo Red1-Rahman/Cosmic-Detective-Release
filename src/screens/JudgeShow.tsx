@@ -63,7 +63,11 @@ function Slide({ art, kicker, title, copy, children }: { art?: number; kicker: s
     </div>
   )
 }
-const P = ({ children }: { children: ReactNode }) => <p className="js-p">{children}</p>
+/* FIX: P now accepts an optional className. The three build errors came from
+   <P className="soft"> being used while P only declared `children`. */
+const P = ({ children, className }: { children: ReactNode; className?: string }) => (
+  <p className={className ? `js-p ${className}` : 'js-p'}>{children}</p>
+)
 const toolOf = (n: number) => TOOLS[n - 1]
 
 /* ------------------------------------------------------------------ slides */
