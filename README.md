@@ -22,7 +22,7 @@ Cosmic Detective approaches this as a game. Every mechanic is a plain-language v
 
 The registered Blink requires the `blink-pair` Supabase migration, Netlify `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` variables, and a running worker installed from `worker/requirements.txt`. If those services are not configured, the portal reports the processing service as unavailable; it never substitutes independent browser rendering for registered images.
 
-When developing locally, `npm run dev` starts Vite only and cannot serve `/.netlify/functions/spherex-job`. To try registered Blink locally, install/link the Netlify CLI and run `netlify dev` from the repository root. Configure the Supabase function environment variables, apply the processing and blink-product migrations, and start the Python worker separately. Netlify Dev serves the local site and its functions together.
+When developing locally, `npm run dev` starts Vite only and cannot serve Netlify Functions. Use `netlify dev` from the repository root for account registration and registered Blink. Configure the server-side Supabase environment variables, apply the processing and blink-product migrations, and start the Python worker separately when using registered Blink. Netlify Dev serves the local site and its functions together.
 - **Accessible by design.** Dark mode, light mode, and a colorblind-safe mode using the Okabe-Ito palette. Verdicts always carry an icon and a label, never color alone.
 
 ### Scientific honesty
@@ -153,7 +153,7 @@ The game runs as a guest with no setup. Progress is saved in your browser only.
 ### Turn on accounts and squads
 
 1. Create a Supabase project and apply the SQL in [`supabase/migrations/`](supabase/migrations/).
-2. In the project's Auth settings, turn **Confirm email** off. Accounts use a derived address and nothing is ever emailed.
+2. Keep the Email provider enabled, and add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to Netlify's environment variables. Registration creates and confirms accounts in a Netlify Function, so the **Confirm email** setting can remain on. The service role key must never use a `VITE_` variable or be exposed to the browser; the derived account address is not used for email delivery.
 3. Copy [`.env.local.example`](.env.local.example) to `.env.local` in the repository root and replace the placeholders:
 
    ```dotenv
@@ -161,7 +161,7 @@ The game runs as a guest with no setup. Progress is saved in your browser only.
    VITE_SUPABASE_ANON_KEY=your-publishable-key
    ```
 
-4. Restart `npm run dev`. The title screen now shows **Log in** and **Create account**.
+4. Run `netlify dev` from the repository root. The title screen now shows **Log in** and **Create account**.
 
 The publishable (anon) key is public by design. Never put a secret or service role key in a `VITE_` variable and never commit any real `.env` file. For the local SPHEREx worker and Netlify function, copy [`.env.example`](.env.example) to `.env` and set the server-side Supabase URL and service role key there.
 

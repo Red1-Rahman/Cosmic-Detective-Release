@@ -87,12 +87,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     name = name.trim()
     if (!USERNAME_RULE.test(name)) throw new Error('Username: 3 to 20 characters, using letters, numbers, _ or . only.')
     if (password.length < 6) throw new Error('Password needs at least 6 characters.')
-    const free = await supabase.rpc('username_available', { p_username: name })
-    if (free.error) throw new Error(free.error.message)
-    if (!free.data) throw new Error('That username is already taken. Try another.')
-    const { data, error } = await supabase.auth.signUp({ email: emailFor(name), password, options: { data: { username: name } } })
-    if (error) throw new Error(error.message)
-    if (!data.session || !data.user) throw new Error('Account created, but Supabase still requires email confirmation. Turn "Confirm email" OFF (see the setup guide), then log in.')
+    const response = await fetch('/.netlify/functions/register-player', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: name, password }),
+    })
+    const result = await response.json().catch(() => ({})) as { error?: string }
+    if (!response.ok) throw new Error(result.error || 'Could not create the account. Please try again.')
+    const { data, error } = await supabase.auth.signInWithPassword({ email: emailFor(name), password })
+    if (error) throw new Error(`Account created, but sign-in failed: ${error.message}`)
     return hydrate(data.user.id, name, true) // a brand-new account keeps the progress you already made as a guest
   }, [hydrate])
 
