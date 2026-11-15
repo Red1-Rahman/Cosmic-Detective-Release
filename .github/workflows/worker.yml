@@ -1,25 +1,45 @@
 # .github/workflows/worker.yml
 name: worker
+
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/15 * * * *"   # optional safety net for missed dispatches
+    - cron: "*/15 * * * *"   # safety net for missed dispatches; delete if you don't want it
+
 concurrency:
   group: worker
   cancel-in-progress: false
+
 jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # EDIT THESE TWO to match your repo (find them with: git ls-files | grep -Ei "worker|requirements")
+      WORKER_ENTRY: scripts/spherex_worker/main.py
+      WORKER_REQUIREMENTS: scripts/spherex_worker/requirements.txt
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check worker files exist
+        run: |
+          test -f "$WORKER_ENTRY" || { echo "Missing $WORKER_ENTRY. Fix WORKER_ENTRY in worker.yml."; exit 1; }
+          test -f "$WORKER_REQUIREMENTS" || { echo "Missing $WORKER_REQUIREMENTS. Fix WORKER_REQUIREMENTS in worker.yml."; exit 1; }
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: worker/requirements.txt
-      - run: pip install -r worker/requirements.txt
-      - run: python worker/main.py --drain
+          cache-dependency-path: ${{ env.WORKER_REQUIREMENTS }}
+
+      - name: Install dependencies
+        run: pip install -r "$WORKER_REQUIREMENTS"
+
+      - name: Run worker
+        run: python "$WORKER_ENTRY" --drain
         env:
-          JOBS_SUPABASE_URL: ${{ secrets.JOBS_SUPABASE_URL }}
-          JOBS_SUPABASE_SERVICE_KEY: ${{ secrets.JOBS_SUPABASE_SERVICE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SPHEREX_BUCKET: spherex-products
+          WORKER_ID: github-actions
+          WORKER_DOWNLOAD_CONCURRENCY: "6"
