@@ -34,12 +34,19 @@ export default async (request) => {
   const admin = createClient(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
   })
-  const { data: available, error: availabilityError } = await admin.rpc('username_available', { p_username: username })
+  // Read through the service client instead of relying on PostgREST RPC
+  // discovery for username_available (which can lag after schema changes).
+  const escapedUsername = username.replaceAll('_', '\\_')
+  const { data: matches, error: availabilityError } = await admin
+    .from('profiles')
+    .select('id')
+    .ilike('username', escapedUsername)
+    .limit(1)
   if (availabilityError) {
     console.error('Username availability check failed:', availabilityError.message)
     return json({ error: 'Could not check username availability. Please try again.' }, 503)
   }
-  if (!available) return json({ error: 'That username is already taken. Try another.' }, 409)
+  if (matches.length) return json({ error: 'That username is already taken. Try another.' }, 409)
 
   const { error } = await admin.auth.admin.createUser({
     email: `${username.toLowerCase()}@${EMAIL_DOMAIN}`,
