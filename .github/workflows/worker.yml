@@ -3,8 +3,6 @@ name: worker
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "*/15 * * * *"   # safety net for missed dispatches; delete if you don't want it
 
 concurrency:
   group: worker
@@ -15,16 +13,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      # EDIT THESE TWO to match your repo (find them with: git ls-files | grep -Ei "worker|requirements")
-      WORKER_ENTRY: scripts/spherex_worker/main.py
-      WORKER_REQUIREMENTS: scripts/spherex_worker/requirements.txt
+      WORKER_REQUIREMENTS: worker/requirements.txt
+      WORKER_CMD: python worker/main.py   # EDIT to match the CMD in Dockerfile.worker
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check worker files exist
+      - name: Check requirements file exists
         run: |
-          test -f "$WORKER_ENTRY" || { echo "Missing $WORKER_ENTRY. Fix WORKER_ENTRY in worker.yml."; exit 1; }
-          test -f "$WORKER_REQUIREMENTS" || { echo "Missing $WORKER_REQUIREMENTS. Fix WORKER_REQUIREMENTS in worker.yml."; exit 1; }
+          test -f "$WORKER_REQUIREMENTS" || { echo "Missing $WORKER_REQUIREMENTS"; ls -R worker; exit 1; }
 
       - uses: actions/setup-python@v5
         with:
@@ -32,11 +28,10 @@ jobs:
           cache: pip
           cache-dependency-path: ${{ env.WORKER_REQUIREMENTS }}
 
-      - name: Install dependencies
-        run: pip install -r "$WORKER_REQUIREMENTS"
+      - run: pip install -r "$WORKER_REQUIREMENTS"
 
       - name: Run worker
-        run: python "$WORKER_ENTRY" --drain
+        run: timeout 8m $WORKER_CMD
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
