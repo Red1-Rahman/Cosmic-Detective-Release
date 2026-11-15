@@ -26,6 +26,8 @@ Env:
   SPHEREX_BUCKET            storage bucket for products (default 'spherex-products')
   WORKER_POLL_SECONDS       poll interval (default 5)
   WORKER_ID                 identity for claim bookkeeping (default host-pid)
+  WORKER_DRAIN / --drain    exit when the queue stays empty (default: poll forever)
+  WORKER_IDLE_GRACE_SECONDS empty-queue wait before a drain exit (default 20)
   WORKER_DOWNLOAD_CONCURRENCY  simultaneous IRSA downloads (default 6, the usual
                             browser per-host limit; lower it on small machines,
                             each in-flight cutout is held in memory)
@@ -74,6 +76,11 @@ from lib.blink import BlinkError, compose_band_channels, register_blink_pair
 BUCKET = os.environ.get("SPHEREX_BUCKET", "spherex-products")
 POLL_SECONDS = float(os.environ.get("WORKER_POLL_SECONDS", "5"))
 WORKER_ID = os.environ.get("WORKER_ID", f"{socket.gethostname()}-{os.getpid()}")
+
+# Drain mode (for GitHub Actions or cron): exit once the queue has stayed empty
+# for IDLE_GRACE_SECONDS. Without it the worker polls forever.
+DRAIN = "--drain" in sys.argv[1:] or os.environ.get("WORKER_DRAIN", "").lower() in ("1", "true", "yes")
+IDLE_GRACE_SECONDS = float(os.environ.get("WORKER_IDLE_GRACE_SECONDS", "20"))
 
 
 def _download_pool_size() -> int:
@@ -295,12 +302,20 @@ def main() -> int:
         return 2
     jobs = Jobs(supabase_url, service_key)
     print(f"worker {WORKER_ID} polling {supabase_url} every {POLL_SECONDS}s (bucket {BUCKET})")
+    idle_since = None
     while True:
         try:
             job = jobs.claim(WORKER_ID)
             if job is None:
+                if DRAIN:
+                    idle_since = idle_since or time.monotonic()
+                    if time.monotonic() - idle_since >= IDLE_GRACE_SECONDS:
+                        print("queue empty, exiting (drain mode)")
+                        DOWNLOAD_POOL.shutdown(wait=False, cancel_futures=True)
+                        return 0
                 time.sleep(POLL_SECONDS)
                 continue
+            idle_since = None
             try:
                 path = process_job(job, jobs, supabase_url)
             except Exception as error:
