@@ -28,6 +28,37 @@ inside Netlify Functions (PLAN.md item 2, "Worker, jobs, and cache"):
   on the job row; orchestration exposes it as `unavailable: <reason>` — never
   a silent fallback.
 
+## Automatic GitHub Actions dispatch
+
+The worker workflow has only a `workflow_dispatch` trigger. A portal button
+does not start GitHub Actions directly: `spherex-job` inserts a row into
+`public.processing_jobs`, then a Supabase Database Webhook must call Netlify's
+`start-worker` function to dispatch `worker.yml`.
+
+Configure these Netlify environment variables in the **Functions** scope:
+
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for the same project used by
+  `VITE_SUPABASE_URL` (the function prefers `VITE_SUPABASE_URL` when available).
+- `GITHUB_DISPATCH_TOKEN`: a fine-grained token for this repository with Actions
+  read/write access.
+- `WORKER_WEBHOOK_SECRET`: a long random value; use the same value in the
+  webhook's `x-webhook-secret` header.
+- `GITHUB_REPO=Red1-Rahman/Cosmic-Detective-Release`,
+  `GITHUB_WORKFLOW_FILE=worker.yml`, and `GITHUB_REF=main` (these are the
+  function defaults, shown here for clarity).
+
+In Supabase, create a Database Webhook for `public.processing_jobs`, event
+**INSERT**, URL `https://cosmicdetective.netlify.app/.netlify/functions/start-worker`,
+and header `x-webhook-secret: <same WORKER_WEBHOOK_SECRET>`. In the GitHub
+repository, add Actions secrets `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` for the worker to claim and process queued jobs.
+
+The queue insert must succeed before a webhook can fire. A cache hit creates no
+new row and therefore does not dispatch a run. Check the portal's processing
+message and the `processing_jobs` table first; a queued row with no Actions run
+usually means the Database Webhook or its Netlify/GitHub credentials are not
+configured.
+
 ## Product stages today
 
 - `cutout-render`: verify-cutout → read-image (astropy) → stretch-render.

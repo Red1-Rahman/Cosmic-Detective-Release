@@ -6,6 +6,7 @@
  * renames and displays them, and never mints 'available' on its own.
  */
 import type { Capability } from './spherex'
+import { supabaseUrl } from './supabase'
 
 export type ProcessingProduct = 'cutout-render' | 'photometry' | 'blink-pair' | 'band-composite'
 
@@ -43,12 +44,14 @@ export async function requestProcessing(product: ProcessingProduct, input: {
   cutoutUrl: string
   params?: Record<string, string | number | boolean>
 }, endpoint = '/.netlify/functions/spherex-job'): Promise<ProcessingCapabilityRecord> {
+  let supabaseHost = ''
+  try { if (supabaseUrl) supabaseHost = new URL(supabaseUrl).host.toLowerCase() } catch { /* function reports a clear config error */ }
   let response: Response
   try {
     response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product, ...input }),
+      body: JSON.stringify({ product, ...input, supabaseHost }),
     })
   } catch {
     return {

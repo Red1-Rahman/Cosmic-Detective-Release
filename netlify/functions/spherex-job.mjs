@@ -145,9 +145,12 @@ function validation(requestBody) {
 
 /* --------------------------------------------------------------- handlers */
 
-async function createJob(request, supabase) {
+async function createJob(request, supabase, serverHost) {
   let requestBody = null
   try { requestBody = await request.json() } catch { return fail('Request body must be a JSON processing request.') }
+  if (typeof requestBody?.supabaseHost !== 'string' || requestBody.supabaseHost.toLowerCase() !== serverHost) {
+    return fail('Processing is pointed at a different Supabase project than the app. Set Netlify SUPABASE_URL to match VITE_SUPABASE_URL and use a service role key from that same project.', 503)
+  }
   const problem = validation(requestBody)
   if (problem) return fail(problem)
 
@@ -252,15 +255,17 @@ export default async (request) => {
     )
   }
   let supabase
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !serviceKey) {
     return fail('Processing orchestration is not configured (missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY).', 503)
   }
   supabase = createClient(url, serviceKey, { auth: { persistSession: false } })
+  let serverHost
+  try { serverHost = new URL(url).host.toLowerCase() } catch { return fail('Processing orchestration has an invalid Supabase URL.', 503) }
 
   try {
-    if (request.method === 'POST') return await createJob(request, supabase)
+    if (request.method === 'POST') return await createJob(request, supabase, serverHost)
     if (request.method === 'GET') return await jobStatus(new URL(request.url), supabase)
     return new Response('Method not allowed', { status: 405, headers: { Allow: 'GET, POST' } })
   } catch (error) {

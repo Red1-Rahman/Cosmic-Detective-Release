@@ -24,7 +24,9 @@ function json(body, status = 200) {
 export default async (request) => {
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
 
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  // Prefer the same project URL embedded in the frontend; SUPABASE_URL remains
+  // a fallback for deployments that scope the VITE_ variable to builds only.
+  const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !serviceKey) return json({ error: 'Account registration is not configured on the server.' }, 503)
 
@@ -45,7 +47,7 @@ export default async (request) => {
   try { serverHost = new URL(url).host.toLowerCase() } catch { return json({ error: 'Account registration has an invalid Supabase URL.' }, 503) }
   if (typeof body.supabaseHost !== 'string' || body.supabaseHost.toLowerCase() !== serverHost) {
     console.error('Player registration project mismatch:', { serverHost, clientHost: body.supabaseHost })
-    return json({ error: 'Account registration points to a different Supabase project than sign-in. Set Netlify SUPABASE_URL to match the app’s VITE_SUPABASE_URL, then redeploy.' }, 503)
+    return json({ error: 'Account registration points to a different Supabase project than sign-in. Set Netlify SUPABASE_URL to the app’s VITE_SUPABASE_URL, and ensure SUPABASE_SERVICE_ROLE_KEY is from that same project.' }, 503)
   }
 
   const admin = createClient(url, serviceKey, {
