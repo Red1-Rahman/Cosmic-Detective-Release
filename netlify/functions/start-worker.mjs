@@ -6,7 +6,7 @@
 // reach this function.
 //
 // Required Netlify env vars (all server side, none with a VITE_ prefix):
-//   GITHUB_DISPATCH_TOKEN   fine-grained token, this repo only, Actions: read and write
+//   CD_GITHUB_DISPATCH_TOKEN   fine-grained token, this repo only, Actions: read and write
 //   WORKER_WEBHOOK_SECRET   long random string, also set as a header in the Supabase webhook
 // Optional:
 //   GITHUB_REPO             default Red1-Rahman/Cosmic-Detective-Release
@@ -35,8 +35,8 @@ export default async (req) => {
     return json(401, { error: "unauthorized" });
   }
 
-  const token = process.env.GITHUB_DISPATCH_TOKEN;
-  if (!token) return json(500, { error: "GITHUB_DISPATCH_TOKEN is not configured" });
+  const token = process.env.CD_GITHUB_DISPATCH_TOKEN;
+  if (!token) return json(500, { error: "CD_GITHUB_DISPATCH_TOKEN is not configured" });
 
   // Supabase webhook payload: { type, table, schema, record, old_record }
   let event = {};

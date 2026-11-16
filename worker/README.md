@@ -39,7 +39,7 @@ Configure these Netlify environment variables in the **Functions** scope:
 
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for the same project used by
   `VITE_SUPABASE_URL` (the function prefers `VITE_SUPABASE_URL` when available).
-- `GITHUB_DISPATCH_TOKEN`: a fine-grained token for this repository with Actions
+- `CD_GITHUB_DISPATCH_TOKEN`: a fine-grained token for this repository with Actions
   read/write access.
 - `WORKER_WEBHOOK_SECRET`: a long random value; use the same value in the
   webhook's `x-webhook-secret` header.

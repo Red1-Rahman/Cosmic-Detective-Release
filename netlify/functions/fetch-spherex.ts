@@ -28,7 +28,7 @@ export default async (req: Request) => {
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${Netlify.env.get("GITHUB_DISPATCH_TOKEN")}`,
+        Authorization: `Bearer ${Netlify.env.get("CD_GITHUB_DISPATCH_TOKEN")}`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
       },
