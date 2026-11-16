@@ -30,34 +30,28 @@ inside Netlify Functions (PLAN.md item 2, "Worker, jobs, and cache"):
 
 ## Automatic GitHub Actions dispatch
 
-The worker workflow has only a `workflow_dispatch` trigger. A portal button
-does not start GitHub Actions directly: `spherex-job` inserts a row into
-`public.processing_jobs`, then a Supabase Database Webhook must call Netlify's
-`start-worker` function to dispatch `worker.yml`.
+The worker workflow has only a `workflow_dispatch` trigger. When a portal
+request creates or requeues a job, the `spherex-job` Netlify function inserts
+the row into `public.processing_jobs` and dispatches `worker.yml` directly
+through the GitHub API. A Supabase Database Webhook is not required.
 
 Configure these Netlify environment variables in the **Functions** scope:
 
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for the same project used by
   `VITE_SUPABASE_URL` (the function prefers `VITE_SUPABASE_URL` when available).
-- `CD_GITHUB_DISPATCH_TOKEN`: a fine-grained token for this repository with Actions
-  read/write access.
-- `WORKER_WEBHOOK_SECRET`: a long random value; use the same value in the
-  webhook's `x-webhook-secret` header.
+- `CD_GITHUB_DISPATCH_TOKEN`: a fine-grained token for this repository with
+  Actions read/write access.
 - `GITHUB_REPO=Red1-Rahman/Cosmic-Detective-Release`,
-  `GITHUB_WORKFLOW_FILE=worker.yml`, and `GITHUB_REF=main` (these are the
-  function defaults, shown here for clarity).
+  `GITHUB_WORKFLOW_FILE=worker.yml`, and `GITHUB_REF=main` are optional; those
+  are the function defaults.
 
-In Supabase, create a Database Webhook for `public.processing_jobs`, event
-**INSERT**, URL `https://cosmicdetective.netlify.app/.netlify/functions/start-worker`,
-and header `x-webhook-secret: <same WORKER_WEBHOOK_SECRET>`. In the GitHub
-repository, add Actions secrets `SUPABASE_URL` and
+In the GitHub repository, add Actions secrets `SUPABASE_URL` and
 `SUPABASE_SERVICE_ROLE_KEY` for the worker to claim and process queued jobs.
 
-The queue insert must succeed before a webhook can fire. A cache hit creates no
-new row and therefore does not dispatch a run. Check the portal's processing
-message and the `processing_jobs` table first; a queued row with no Actions run
-usually means the Database Webhook or its Netlify/GitHub credentials are not
-configured.
+A queued row with no Actions run usually means the Netlify dispatch token,
+workflow name, repository, or branch is not configured correctly. The function
+returns a dispatch error to the portal if GitHub rejects or cannot be reached.
+A cache hit for a completed or running job does not need to start another run.
 
 ## Product stages today
 

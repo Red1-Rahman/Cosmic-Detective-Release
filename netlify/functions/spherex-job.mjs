@@ -49,6 +49,42 @@ function fail(message, status = 400) {
   return json({ state: 'unavailable', reason: message }, status)
 }
 
+async function dispatchWorker() {
+  const token = process.env.CD_GITHUB_DISPATCH_TOKEN
+  if (!token) return 'CD_GITHUB_DISPATCH_TOKEN is not configured.'
+
+  const repo = process.env.GITHUB_REPO || 'Red1-Rahman/Cosmic-Detective-Release'
+  const workflow = process.env.GITHUB_WORKFLOW_FILE || 'worker.yml'
+  const ref = process.env.GITHUB_REF || 'main'
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          'User-Agent': 'cosmic-detective-netlify',
+        },
+        body: JSON.stringify({ ref }),
+        signal: AbortSignal.timeout(8000),
+      },
+    )
+    if (response.status === 204) return null
+    console.error(`GitHub worker dispatch failed: HTTP ${response.status}`)
+    return `GitHub Actions rejected the worker dispatch (HTTP ${response.status}).`
+  } catch (error) {
+    console.error('GitHub worker dispatch error:', error?.message || error)
+    return 'Could not reach GitHub to start the worker.'
+  }
+}
+
+async function dispatchQueuedJob(job) {
+  if (job?.status !== 'queued') return null
+  return dispatchWorker()
+}
+
 /* Production server keys are fine after cold start; no per-request rebuild. */
 function clientKeyHash(request, salt) {
   const ip = request.headers.get('x-nf-client-connection-ip')
@@ -163,7 +199,11 @@ async function createJob(request, supabase, serverHost) {
   // same input key after a transient worker or upstream archive failure.
   const existing = await supabase.from('processing_jobs').select('*').eq('cache_key', key).maybeSingle()
   if (existing.error) return fail(`Could not load the existing processing job: ${existing.error.message}`, 503)
-  if (existing.data && existing.data.status !== 'failed') return json(capabilityForJob(existing.data))
+  if (existing.data && existing.data.status !== 'failed') {
+    const dispatchError = await dispatchQueuedJob(existing.data)
+    if (dispatchError) return fail(`The job is queued, but its worker could not be started: ${dispatchError}`, 502)
+    return json(capabilityForJob(existing.data))
+  }
 
   const salt = process.env.RATE_LIMIT_SALT || 'cosmic-detective'
   const clientKey = clientKeyHash(request, salt)
@@ -190,11 +230,15 @@ async function createJob(request, supabase, serverHost) {
     if (retried.error) return fail(`Could not requeue the failed processing job: ${retried.error.message}`, 503)
     if (retried.data) {
       await supabase.from('processing_requests').insert({ client_key: clientKey, cache_key: key })
+      const dispatchError = await dispatchQueuedJob(retried.data)
+      if (dispatchError) return fail(`The job is queued, but its worker could not be started: ${dispatchError}`, 502)
       return json({ ...capabilityForJob(retried.data), cacheKey: key }, 202)
     }
     // A concurrent retry may already have changed the row from failed.
     const raced = await supabase.from('processing_jobs').select('*').eq('cache_key', key).maybeSingle()
     if (raced.error || !raced.data) return fail('Could not load the retried processing job.', 503)
+    const dispatchError = await dispatchQueuedJob(raced.data)
+    if (dispatchError) return fail(`The job is queued, but its worker could not be started: ${dispatchError}`, 502)
     return json({ ...capabilityForJob(raced.data), cacheKey: key }, 202)
   }
 
@@ -221,6 +265,8 @@ async function createJob(request, supabase, serverHost) {
   }
   const logged = await supabase.from('processing_requests').insert({ client_key: clientKey, cache_key: key })
   void logged
+  const dispatchError = await dispatchQueuedJob(inserted.data)
+  if (dispatchError) return fail(`The job is queued, but its worker could not be started: ${dispatchError}`, 502)
   return json({ ...capabilityForJob(inserted.data), cacheKey: key }, 202)
 }
 
