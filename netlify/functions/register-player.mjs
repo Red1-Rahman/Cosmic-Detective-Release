@@ -3,6 +3,17 @@ import { createClient } from '@supabase/supabase-js'
 const USERNAME_RULE = /^[A-Za-z0-9_.]{3,20}$/
 const EMAIL_DOMAIN = 'players.cosmicdetective.app'
 
+// Enforced by Netlify before this function runs. The same endpoint is the only
+// public path to privileged account creation, so limit repeated attempts by IP.
+export const config = {
+  path: '/.netlify/functions/register-player',
+  rateLimit: {
+    windowLimit: 5,
+    windowSize: 60,
+    aggregateBy: ['ip', 'domain'],
+  },
+}
+
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -30,6 +41,12 @@ export default async (request) => {
   const password = typeof body?.password === 'string' ? body.password : ''
   if (!USERNAME_RULE.test(username)) return json({ error: 'Username: 3 to 20 characters, using letters, numbers, _ or . only.' }, 400)
   if (password.length < 6 || password.length > 256) return json({ error: 'Password must be between 6 and 256 characters.' }, 400)
+  let serverHost
+  try { serverHost = new URL(url).host.toLowerCase() } catch { return json({ error: 'Account registration has an invalid Supabase URL.' }, 503) }
+  if (typeof body.supabaseHost !== 'string' || body.supabaseHost.toLowerCase() !== serverHost) {
+    console.error('Player registration project mismatch:', { serverHost, clientHost: body.supabaseHost })
+    return json({ error: 'Account registration points to a different Supabase project than sign-in. Set Netlify SUPABASE_URL to match the app’s VITE_SUPABASE_URL, then redeploy.' }, 503)
+  }
 
   const admin = createClient(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },

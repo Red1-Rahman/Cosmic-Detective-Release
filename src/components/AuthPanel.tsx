@@ -45,7 +45,14 @@ export function AuthPanel() {
     try {
       const done = mode === 'register' ? await signUp(name, pw) : await signIn(name, pw)
       sfx.success(); go(done)
-    } catch (ex) { sfx.reject(); setErr((ex as Error).message) } finally { setBusy(false) }
+    } catch (ex) {
+      sfx.reject()
+      const message = (ex as Error).message
+      if (message.startsWith('Account created, but sign-in failed:')) {
+        setMode('login')
+        setErr('Your account was created, but automatic sign-in failed. Log in with the same username and password to finish; your guest progress will be kept.')
+      } else setErr(message)
+    } finally { setBusy(false) }
   }
 
   return (

@@ -153,7 +153,7 @@ The game runs as a guest with no setup. Progress is saved in your browser only.
 ### Turn on accounts and squads
 
 1. Create a Supabase project and apply the SQL in [`supabase/migrations/`](supabase/migrations/).
-2. Keep the Email provider enabled, and add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to Netlify's environment variables. Registration creates and confirms accounts in a Netlify Function, so the **Confirm email** setting can remain on. The service role key must never use a `VITE_` variable or be exposed to the browser; the derived account address is not used for email delivery.
+2. Keep the Email provider enabled, and add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to Netlify's environment variables. `SUPABASE_URL` must point to the same project as the app's `VITE_SUPABASE_URL`; registration rejects a mismatch before creating an account. Registration creates and confirms accounts in a Netlify Function, so the **Confirm email** setting can remain on. Netlify rate limits registration to 5 requests per minute per IP and domain before invoking the function. The service role key must never use a `VITE_` variable or be exposed to the browser; the derived account address is not used for email delivery.
 3. Copy [`.env.local.example`](.env.local.example) to `.env.local` in the repository root and replace the placeholders:
 
    ```dotenv

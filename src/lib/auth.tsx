@@ -1,11 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { backendReady, supabase } from './supabase'
+import { backendReady, supabase, supabaseUrl } from './supabase'
 import { FRESH, useGame, type GameState } from './store'
 import { navigate } from './util'
 
 // Players log in with a USERNAME + password. Supabase wants an email, so we derive a private
-// one from the username. Nothing is ever emailed (email confirmation is switched off).
+// one from the username. The Netlify registration function confirms accounts server-side;
+// the derived address is never used for email delivery.
 const emailFor = (u: string) => `${u.trim().toLowerCase()}@players.cosmicdetective.app`
+const PENDING_GUEST_RECOVERY = 'cosmic-detective:pending-guest-recovery:v1'
 export const USERNAME_RULE = /^[A-Za-z0-9_.]{3,20}$/
 
 interface AuthApi {
@@ -30,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [username, setUsername] = useState<string | null>(null)
   const sRef = useRef(s); sRef.current = s
   const loadedFor = useRef<string | null>(null) // never upload before the server save has been loaded
+  const pendingRecovery = useRef<string | null>(null)
 
   const push = useCallback(async () => {
     const cur = sRef.current
@@ -87,22 +90,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     name = name.trim()
     if (!USERNAME_RULE.test(name)) throw new Error('Username: 3 to 20 characters, using letters, numbers, _ or . only.')
     if (password.length < 6) throw new Error('Password needs at least 6 characters.')
+    const supabaseHost = supabaseUrl ? new URL(supabaseUrl).host.toLowerCase() : ''
     const response = await fetch('/.netlify/functions/register-player', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: name, password }),
+      body: JSON.stringify({ username: name, password, supabaseHost }),
     })
     const result = await response.json().catch(() => ({})) as { error?: string }
+    if (response.status === 429) throw new Error('Too many account creation attempts. Please wait a minute and try again.')
     if (!response.ok) throw new Error(result.error || 'Could not create the account. Please try again.')
+    // Keep the guest save if account creation succeeds but the following login
+    // request fails. This marker survives a reload and is consumed on login to
+    // this same username only.
+    pendingRecovery.current = name.toLowerCase()
+    try { localStorage.setItem(PENDING_GUEST_RECOVERY, JSON.stringify({ username: name.toLowerCase() })) } catch { /* in-memory recovery still covers this page */ }
     const { data, error } = await supabase.auth.signInWithPassword({ email: emailFor(name), password })
     if (error) throw new Error(`Account created, but sign-in failed: ${error.message}`)
-    return hydrate(data.user.id, name, true) // a brand-new account keeps the progress you already made as a guest
+    const done = await hydrate(data.user.id, name, true) // a brand-new account keeps the progress you already made as a guest
+    pendingRecovery.current = null
+    try { localStorage.removeItem(PENDING_GUEST_RECOVERY) } catch { /* ignore unavailable storage */ }
+    return done
   }, [hydrate])
 
   const signIn = useCallback(async (name: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email: emailFor(name), password })
     if (error) throw new Error(error.message === 'Invalid login credentials' ? 'Wrong username or password.' : error.message)
-    return hydrate(data.user.id, (data.user.user_metadata?.username as string) || name.trim(), false)
+    const accountName = (data.user.user_metadata?.username as string) || name.trim()
+    let recoverGuest = pendingRecovery.current === accountName.toLowerCase()
+    if (!recoverGuest) {
+      try {
+        const pending = JSON.parse(localStorage.getItem(PENDING_GUEST_RECOVERY) || 'null') as { username?: unknown } | null
+        recoverGuest = typeof pending?.username === 'string' && pending.username.toLowerCase() === accountName.toLowerCase()
+      } catch { /* no pending recovery marker */ }
+    }
+    const done = await hydrate(data.user.id, accountName, recoverGuest)
+    if (recoverGuest) {
+      pendingRecovery.current = null
+      try { localStorage.removeItem(PENDING_GUEST_RECOVERY) } catch { /* ignore unavailable storage */ }
+    }
+    return done
   }, [hydrate])
 
   const signOut = useCallback(async () => {
